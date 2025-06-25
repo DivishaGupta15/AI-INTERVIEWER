@@ -19,6 +19,8 @@ from interview_llm import next_interview_question
 from pathlib import Path
 import re, json
 
+GREETING = "Hey there, I'm your AI Interviewer. Would you like to get started?"
+
 # ─── UI basics ──────────────────────────────────────────────────
 st.set_page_config(page_title="Résumé ↔ JD parser", layout="centered")
 st.markdown("""
@@ -152,23 +154,80 @@ if resume_file and jd_file:
     if "chat" not in st.session_state:   st.session_state.chat=[]
     if "q_count" not in st.session_state:st.session_state.q_count=0
 
-    with st.sidebar.expander("🎙 Live interview", expanded=False):
-     if st.button("Click to Speak"):
-        with st.spinner("Listening..."):
-            try:
-                filename = record_audio()
-                if not filename or not os.path.exists(filename):
-                    st.error("Recording failed. Please try again.")
-                else:
-                    user_input = transcribe_audio(filename)
-                    st.markdown(f"**You said:** {user_input}")
 
-                    with st.spinner("Thinking..."):
-                        response = get_ai_response(user_input)
-                    st.markdown(f"**Interviewer:** {response}")
-                    speak(response)
-            except Exception as e:
-                st.error(f"An error occurred: {e}")
+
+    with st.sidebar.expander("🎙 Live interview", expanded=False):
+
+    # ── session keys ───────────────────────────────────────────────
+        if "voice_on"       not in st.session_state: st.session_state.voice_on = False
+        if "await_answer"   not in st.session_state: st.session_state.await_answer = False
+        if "greeted"        not in st.session_state: st.session_state.greeted = False
+        if "chat"           not in st.session_state: st.session_state.chat = []   
+        if "last_ai_q"      not in st.session_state: st.session_state.last_ai_q = ""
+
+    # ── start/stop buttons ───────────────────────────────────────
+        cols = st.columns(2)
+        if cols[0].button("▶ Start Voice Interview", disabled=st.session_state.voice_on):
+            st.session_state.voice_on = True
+            st.session_state.greeted = False        
+
+        if cols[1].button("⏹ Stop Voice Interview", disabled=not st.session_state.voice_on):
+            st.session_state.voice_on = False
+            st.session_state.await_answer = False
+            st.session_state.greeted = False
+
+        st.divider()
+
+    # ── display full script updated ───────────────────────────────
+        for turn in st.session_state.chat:
+            st.markdown(f"**Interviewer:** {turn['q']}")
+            st.markdown(f"**You:** {turn['a']}")
+            st.divider()
+
+    # ── live interview flow ────────────────────────────────────────
+        if st.session_state.voice_on:
+
+        # greet
+            if not st.session_state.greeted:
+                st.markdown(f"**Interviewer:** {GREETING}")
+                speak(GREETING)
+                st.session_state.last_ai_q = GREETING
+                st.session_state.await_answer = True
+                st.session_state.greeted = True
+                st.rerun()   
+
+
+        
+            if st.session_state.await_answer:
+                if st.button("Click to Speak"):
+                    with st.spinner("Listening…"):
+                        filename = record_audio()
+                    if not filename or not os.path.exists(filename):
+                        st.error("Recording failed. Please try again.")
+                        st.stop()
+
+                    user_text = transcribe_audio(filename)
+                    st.session_state.chat.append({
+                        "q": st.session_state.last_ai_q,
+                        "a": user_text
+                    })
+                    st.session_state.await_answer = False
+                    st.rerun()
+
+        #generate question
+            elif st.session_state.chat:
+                with st.spinner("Thinking…"):
+                    next_q = next_interview_question(
+                        res_summary, jd_summary, st.session_state.chat
+                    )
+                st.markdown(f"**Interviewer:** {next_q}")
+                speak(next_q)
+                st.session_state.last_ai_q = next_q
+                st.session_state.await_answer = True
+                st.rerun()
+
+
+
 
     # ─── tabs ───────────────────────────────────────────────────
     raw_tab, parsed_tab = st.tabs(["📑 Previews","🔎 Parsed"])
