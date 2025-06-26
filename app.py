@@ -22,7 +22,7 @@ import re, json
 GREETING = "Hey there, I'm your AI Interviewer. Would you like to get started?"
 
 # ─── UI basics ──────────────────────────────────────────────────
-st.set_page_config(page_title="Résumé ↔ JD parser", layout="centered")
+st.set_page_config(page_title="Resume ↔ JD parser", layout="centered")
 st.markdown("""
 <style>
   .main>div:first-child {max-width:860px;margin:auto;}
@@ -34,12 +34,12 @@ st.markdown("""
   .token-hit{background:#dff0d8}
 </style>
 """, unsafe_allow_html=True)
-st.title("📄 Résumé & Job-Description Parser")
+st.title("📄 Resume & Job-Description Parser")
 
 MAX_QUESTIONS = 5
 
 # ─── uploads ────────────────────────────────────────────────────
-resume_file = st.file_uploader("⇧ Upload Résumé", ["pdf", "txt"], key="resume")
+resume_file = st.file_uploader("⇧ Upload Resume", ["pdf", "txt"], key="resume")
 jd_file     = st.file_uploader("⇧ Upload JD",     ["pdf", "txt", "docx"], key="jd")
 
 # ─── text extraction ────────────────────────────────────────────
@@ -252,7 +252,7 @@ if resume_file and jd_file:
                         cols[i%3].markdown(f"<span class='token'>{s}</span>", unsafe_allow_html=True)
             else: col.caption("— none detected —")
 
-        l.subheader("📌 Résumé bullets")
+        l.subheader("📌 Resume bullets")
         for b in extract_bullets(res_txt): l.markdown(f"- {b}")
         r.subheader("📌 JD responsibilities")
         for b in extract_bullets(jd_txt):  r.markdown(f"- {b}")
