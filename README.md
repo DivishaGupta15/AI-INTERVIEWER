@@ -5,7 +5,7 @@
 AI-INTERVIEWER is an interactive AI-powered tool that simulates a job interview process. It analyzes a candidate's resume and a job description, identifies key skills and overlaps, and conducts a structured, voice-enabled interview using advanced language models and speech recognition. The app provides both a web interface (via Streamlit) and a command-line/voice interface.
 
 ## Features
-- Upload and parse résumé (PDF/TXT) and job description (PDF/TXT/DOCX)
+- Upload and parse resume (PDF/TXT) and job description (PDF/TXT/DOCX)
 - Extract and summarize key skills from both documents
 - Rank and match top skills between candidate and job
 - Conduct a live, voice-based interview with AI-generated questions
