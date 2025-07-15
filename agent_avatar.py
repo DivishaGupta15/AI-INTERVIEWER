@@ -9,6 +9,7 @@ from elevenlabs import generate, play, Voice, VoiceSettings
 from run_avatar import animate_avatar  
 import time 
 import numpy as np
+import subprocess 
 
 
 
@@ -97,7 +98,23 @@ def speak(text):
         ),
         model="eleven_multilingual_v2"
     )
-    play(audio) 
+    play(audio)
+    
+def animate_avatar(audio_path, image_path="avatar.png", output_path="results/latest_animation.mp4"):
+    print("Animating avatar...")
+    sadtalker_cmd = [
+        "python", "SadTalker/inference.py",
+        "--driven_audio", audio_path,
+        "--source_image", image_path,
+        "--result_dir", "results",
+        "--enhancer", "gfpgan",
+        "--preprocess", "full",
+        "--still",  # Static head pose
+        "--output_name", "latest_animation"
+    ]
+    subprocess.run(sadtalker_cmd, cwd="SadTalker")
+    print(f"Animation saved to {output_path}")
+    return output_path
 
 def run_interview():
     print("Welcome to the AI Interviewer. Press Ctrl+C to quit.\n")
