@@ -6,11 +6,6 @@ import os
 
 import openai
 from pydantic import BaseModel
-from dotenv import load_dotenv
-load_dotenv()
-print("DEBUG: OPENAI_API_KEY =", os.getenv("OPENAI_API_KEY"))
-print("DEBUG: ELEVEN_API_KEY =", os.environ.get("ELEVEN_API_KEY"))
-
 
 
 # ------------------------------------------------------------------ #
@@ -27,7 +22,7 @@ class ChatMessage(BaseModel):
 def _gpt_chat(
     messages: List[ChatMessage],
     *,
-    model: str = "gpt-4o-mini",          # or gpt-4o-mini, gpt-4o etc.
+    model: str = "gpt-3.5-turbo",          # or gpt-4o-mini, gpt-4o etc.
     temperature: float = 0.7,
 ) -> str:
     """
