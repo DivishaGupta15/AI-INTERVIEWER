@@ -198,31 +198,22 @@ if resume_file and jd_file:
 
 
         
-            if st.session_state.await_answer:
-                if st.button("Click to Speak"):
-                    with st.spinner("Listening…"):
-                        filename = record_audio()
-                    if not filename or not os.path.exists(filename):
-                        st.error("Recording failed. Please try again.")
-                        st.stop()
+            if st.session_state.await_answer and st.button("Click to Speak"):
+                wav = record_audio(device=None)
+                if not wav:
+                    st.error("Recording timed out—please try again.")
+                    st.stop()
 
-                    user_text = transcribe_audio(filename)
-                    st.session_state.chat.append({
-                        "q": st.session_state.last_ai_q,
-                        "a": user_text
-                    })
-                    st.session_state.await_answer = False
-                    st.rerun()
+                user_text = transcribe_audio(wav)
+                st.session_state.chat.append({"q": st.session_state.last_ai_q, "a": user_text})
+                st.session_state.await_answer = False
 
-        #generate question
-            elif st.session_state.chat:
-                with st.spinner("Thinking…"):
-                    next_q = next_interview_question(
-                        res_summary, jd_summary, st.session_state.chat
-                    )
-                st.markdown(f"**Interviewer:** {next_q}")
-                speak(next_q)
+                next_q = get_ai_response(user_text)
                 st.session_state.last_ai_q = next_q
+
+                # this will render your animated avatar video
+                speak(next_q)
+
                 st.session_state.await_answer = True
                 st.rerun()
 
@@ -252,7 +243,7 @@ if resume_file and jd_file:
                         cols[i%3].markdown(f"<span class='token'>{s}</span>", unsafe_allow_html=True)
             else: col.caption("— none detected —")
 
-        l.subheader("📌 Resume bullets")
+        l.subheader("📌 Résumé bullets")
         for b in extract_bullets(res_txt): l.markdown(f"- {b}")
         r.subheader("📌 JD responsibilities")
         for b in extract_bullets(jd_txt):  r.markdown(f"- {b}")

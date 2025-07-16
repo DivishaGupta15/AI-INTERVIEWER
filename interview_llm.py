@@ -11,7 +11,7 @@ def next_interview_question(
     jd_summary: str,
     history: List[Dict[str, str]],
     *,
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-3.5-turbo",
 ) -> str:
     """One short acknowledgement + one follow-up question (≤ 60 words total)."""
     dialogue = "\n".join(

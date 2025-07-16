@@ -1,103 +1,123 @@
-import warnings
-warnings.filterwarnings("ignore", message="FP16 is not supported on CPU")
+# agent_avatar.py
+import os, time, tempfile, warnings, wave
+from pathlib import Path
+
+import numpy as np
 import whisper
 import sounddevice as sd
 from scipy.io.wavfile import write
+
 import os
 import openai 
 from elevenlabs import generate, play, Voice, VoiceSettings 
+
 from run_avatar import animate_avatar  
+
 import time 
 import numpy as np
 import subprocess 
+import streamlit as st
 
+# SadTalker loader (make sure sadtalker_loader.py is correctly configured)
+from sadtalker_loader import sad_talker
 
+warnings.filterwarnings("ignore", message="FP16 is not supported on CPU")
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
-os.environ["ELEVEN_API_KEY"] = os.getenv("ELEVEN_API_KEY")
+# ── API KEYS & MODELS ─────────────────────────────────────────────
+openai.api_key = os.getenv("OPENAI_API_KEY") or st.stop("OPENAI_API_KEY not set")
+os.environ["ELEVEN_API_KEY"] = os.getenv("ELEVEN_API_KEY", "")
 
+whisper_model = whisper.load_model("small")          # CPU model is fine
+AVATAR_IMG    = Path(__file__).resolve().parent / "assets" / "avatar.png"
 
-whisper_model = whisper.load_model("small")  
-
+# ── MIC RECORDING ────────────────────────────────────────────────
 def record_audio(
-        filename="user_input.wav",
-        fs=44100,
-        silence_thresh=0.015,    #silence threshold 
-        silence_duration=2.0,    #silence detection time
-        max_record=60            
-    ):
-   
-    print("Speak now… (Ctrl-C to end interview)")
-
-    buf_len = int(fs * silence_duration)
-    ring = np.zeros(buf_len, dtype=np.float32)       
-
-    frames = []                 
-    start = time.time()
+    filename="user_input.wav",
+    fs=16_000,
+    silence_thresh=0.008,
+    silence_duration=1.2,
+    max_record=60,
+    device=None,
+):
+    """Record mic until the speaker pauses, write a WAV, return its path or None."""
+    ring_len = int(fs * silence_duration)
+    ring     = np.zeros(ring_len, dtype=np.float32)
+    frames, heard = [], False
+    t0 = time.time()
 
     try:
-        with sd.InputStream(samplerate=fs, channels=1) as stream:
+        with sd.InputStream(samplerate=fs, channels=1, device=device) as stream:
             while True:
-                block, _ = stream.read(int(fs * 0.1))      
-                block = block.flatten()
-                frames.append(block)
+                blk, _ = stream.read(int(fs * 0.1))
+                blk = blk.flatten()
+                ring = np.roll(ring, -len(blk))
+                ring[-len(blk):] = blk
 
-                ring = np.roll(ring, -len(block))
-                ring[-len(block):] = block
-                rms = np.sqrt(np.mean(ring**2))
+                if np.abs(ring).mean() > silence_thresh:
+                    heard = True
+                    frames.append(blk)
+                    last_voice = time.time()
 
-                # this function makes it stop if long enough silence
-                if rms < silence_thresh and (time.time() - start) > 0.3:  #for pause in the beginning it ignores that
-                    
-                    silent_for = 0
-                    while rms < silence_thresh:
-                        silent_for += 0.1
-                        if silent_for >= silence_duration:
-                            raise StopIteration
-                        block, _ = stream.read(int(fs * 0.1))
-                        block = block.flatten()
-                        frames.append(block)
-                        ring = np.roll(ring, -len(block))
-                        ring[-len(block):] = block
-                        rms = np.sqrt(np.mean(ring**2))
-
-                if (time.time() - start) >= max_record:
-                    print("Max recording length reached.")
+                if heard and (time.time() - last_voice) > silence_duration:
                     break
+                if heard and (time.time() - t0) > max_record:
+                    break
+                if not heard and (time.time() - t0) > 10:
+                    return None
+    except KeyboardInterrupt:
+        return None
 
-    except StopIteration:
-        pass    
+    if not frames:
+        return None
 
-    audio_data = np.concatenate(frames)
-    write(filename, fs, audio_data)
+    write(filename, fs, np.concatenate(frames))
     return filename
 
-def transcribe_audio(filename):
-    result = whisper_model.transcribe(filename)
-    print(f"You said: {result['text']}")
-    return result["text"]
+# ── ASR, GPT, TTS ────────────────────────────────────────────────
+def transcribe_audio(wav: str) -> str:
+    return whisper_model.transcribe(wav)["text"].strip()
 
-def get_ai_response(prompt):
-    response = openai.chat.completions.create(
+def ai_reply(prompt: str) -> str:
+    resp = openai.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "You are a calm and professional job interviewer."},
-            {"role": "user", "content": prompt}
-        ]
+            {"role": "system",
+             "content": "You are a calm and professional job interviewer."},
+            {"role": "user", "content": prompt},
+        ],
     )
-    return response.choices[0].message.content.strip()
+    return resp.choices[0].message.content.strip()
 
-
-def speak(text):
-    print(f"\n{text}\n")
-    audio = generate(
+def tts_to_wav(text: str, wav_path: str):
+    """Generate speech with ElevenLabs and save as 24 kHz mono WAV."""
+    stream = generate(
         text=text,
         voice=Voice(
             voice_id="UgBBYS2sOqTuMpoF3BR0",
-            settings=VoiceSettings(stability=0.5, similarity_boost=0.75)
+            settings=VoiceSettings(stability=0.5, similarity_boost=0.75),
         ),
-        model="eleven_multilingual_v2"
+        model="eleven_multilingual_v2",
     )
+    pcm_parts = [
+        (chunk if isinstance(chunk, (bytes, bytearray))
+         else np.asarray(chunk, dtype=np.int16).tobytes())
+        for chunk in stream
+    ]
+    with wave.open(wav_path, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)       # 16-bit
+        wf.setframerate(24_000)
+        wf.writeframes(b"".join(pcm_parts))
+
+# ── SadTalker wrapper ────────────────────────────────────────────
+def wav_to_mp4(wav_path: str) -> str:
+    """Run SadTalker and return the real MP4 path it produces."""
+    video_path = sad_talker.test(
+        str(AVATAR_IMG),     # source image
+        str(wav_path),       # driven audio
+        result_dir="results"
+    )
+
     play(audio)
     
 def animate_avatar(audio_path, image_path="avatar.png", output_path="results/latest_animation.mp4"):
@@ -129,6 +149,39 @@ def run_interview():
             break
         except Exception as e:
             print(f"Error: {e}")
+            
+    return video_path
 
+# ── Streamlit helpers ────────────────────────────────────────────
+def speak(text: str):
+    wav_path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
+    tts_to_wav(text, wav_path)
+
+    video_path = wav_to_mp4(wav_path)
+
+    with AVATAR_IMG.open("rb") as f:
+        st.image(f.read(), width=250)
+
+    with open(video_path, "rb") as f:
+        st.video(f.read(), format="video/mp4")
+
+    with open(wav_path, "rb") as f:
+        st.audio(f.read(), format="audio/wav")
+
+    st.markdown(f"**Interviewer:** {text}")
+
+
+# ── Streamlit front-end when run directly ───────────────────────
 if __name__ == "__main__":
-    run_interview()
+    st.title("🎤 Live Job-Interview Avatar")
+    if st.button("Record a question"):
+        wav_in = record_audio()
+        if wav_in:
+            you = transcribe_audio(wav_in)
+            st.markdown(f"**You:** {you}")
+            speak(ai_reply(you))
+        else:
+            st.warning("No speech detected.")
+
+# backward compatibility for app.py
+get_ai_response = ai_reply
