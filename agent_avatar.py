@@ -6,9 +6,17 @@ import numpy as np
 import whisper
 import sounddevice as sd
 from scipy.io.wavfile import write
-import openai
+
+import os
+import openai 
+from elevenlabs import generate, play, Voice, VoiceSettings 
+
+from run_avatar import animate_avatar  
+
+import time 
+import numpy as np
+import subprocess 
 import streamlit as st
-from elevenlabs import generate, Voice, VoiceSettings
 
 # SadTalker loader (make sure sadtalker_loader.py is correctly configured)
 from sadtalker_loader import sad_talker
@@ -109,6 +117,39 @@ def wav_to_mp4(wav_path: str) -> str:
         str(wav_path),       # driven audio
         result_dir="results"
     )
+
+    play(audio)
+    
+def animate_avatar(audio_path, image_path="avatar.png", output_path="results/latest_animation.mp4"):
+    print("Animating avatar...")
+    sadtalker_cmd = [
+        "python", "SadTalker/inference.py",
+        "--driven_audio", audio_path,
+        "--source_image", image_path,
+        "--result_dir", "results",
+        "--enhancer", "gfpgan",
+        "--preprocess", "full",
+        "--still",  # Static head pose
+        "--output_name", "latest_animation"
+    ]
+    subprocess.run(sadtalker_cmd, cwd="SadTalker")
+    print(f"Animation saved to {output_path}")
+    return output_path
+
+def run_interview():
+    print("Welcome to the AI Interviewer. Press Ctrl+C to quit.\n")
+    while True:
+        try:
+            audio_file = record_audio()
+            user_input = transcribe_audio(audio_file)
+            ai_reply = get_ai_response(user_input)
+            speak(ai_reply)
+        except KeyboardInterrupt:
+            print("\nInterview ended.")
+            break
+        except Exception as e:
+            print(f"Error: {e}")
+            
     return video_path
 
 # ── Streamlit helpers ────────────────────────────────────────────
@@ -128,6 +169,7 @@ def speak(text: str):
         st.audio(f.read(), format="audio/wav")
 
     st.markdown(f"**Interviewer:** {text}")
+
 
 # ── Streamlit front-end when run directly ───────────────────────
 if __name__ == "__main__":
